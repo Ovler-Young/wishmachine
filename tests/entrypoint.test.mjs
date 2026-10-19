@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -7,12 +7,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 
 const entrypoint = resolve('runtime/entrypoint.sh');
+const bash = execFileSync('bash', ['-c', 'printf %s "$BASH"'], { encoding: 'utf8' });
 
 async function start(t, overrides = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'wishmachine-entrypoint-'));
   await mkdir(join(directory, 'bin'));
   for (const name of ['dsh', 'cloudflared']) {
-    await writeFile(join(directory, 'bin', name), `#!/usr/bin/env bash
+    await writeFile(join(directory, 'bin', name), `#!${bash}
 set -eu
 name=${name}
 printf '%s' "\${TUNNEL_TOKEN:-}" > "$TEST_DIRECTORY/$name.token"
@@ -25,7 +26,7 @@ fi
 while true; do sleep 0.05; done
 `, { mode: 0o755 });
   }
-  const child = spawn('bash', [entrypoint], {
+  const child = spawn(bash, [entrypoint], {
     env: {
       ...process.env,
       PATH: `${directory}/bin:${process.env.PATH}`,
