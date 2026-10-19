@@ -1,0 +1,131 @@
+name: Container
+
+on:
+  pull_request:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'runtime/**'
+      - 'tests/**'
+      - '.github/workflows/container.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'runtime/**'
+      - 'tests/**'
+      - '.github/workflows/container.yml'
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/ovler-young/wishmachine
+  PUBLISH: ${{ github.repository == 'Ovler-Young/wishmachine' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request' }}
+
+jobs:
+  container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Select Harness version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$PUBLISH" == true ]]; then
+            version=$(npm view @deepseek-ai/dsh dist-tags.latest)
+          else
+            version=$(node -p 'require("./nix/package.json").dependencies["@deepseek-ai/dsh"]')
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'tag=dsh-%s-git-%s\n' "$version" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check published version
+        if: env.PUBLISH == 'true'
+        id: published
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if docker manifest inspect "$IMAGE:$TAG" > /dev/null 2>&1; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            printf 'Already published %s:%s.\n' "$IMAGE" "$TAG" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Lock upstream release
+        if: env.PUBLISH == 'true' && steps.published.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: npm install --prefix nix --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact "@deepseek-ai/dsh@$VERSION"
+
+      - name: Install Nix
+        if: steps.published.outputs.exists != 'true'
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      - name: Verify entrypoint and build image
+        if: steps.published.outputs.exists != 'true'
+        run: |
+          nix flake check path:. --no-update-lock-file
+          nix build path:.#image --no-update-lock-file
+
+      - name: Test the Docker image
+        if: steps.published.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker load < result
+          bash tests/image-smoke.sh "$IMAGE:dsh-$VERSION"
+
+      - name: Retain exact build inputs
+        if: always() && steps.version.outcome == 'success' && steps.published.outputs.exists != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: inputs-${{ steps.version.outputs.tag }}
+          path: |
+            flake.lock
+            nix/package.json
+            nix/package-lock.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish image
+        if: env.PUBLISH == 'true' && steps.published.outputs.exists != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          source="$IMAGE:dsh-$VERSION"
+          docker tag "$source" "$IMAGE:latest"
+          docker tag "$source" "$IMAGE:$TAG"
+          docker push "$source"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$TAG"
+          printf 'Published %s:%s and dsh-%s, latest.\n' "$IMAGE" "$TAG" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
