@@ -1,0 +1,20 @@
+services:
+  harness:
+    image: ${WISHMACHINE_IMAGE:-ghcr.io/ovler-young/wishmachine:latest}
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env}
+      DSH_PUBLIC_URL: ${DSH_PUBLIC_URL:-}
+    volumes:
+      - type: bind
+        source: ${WORKSPACE_DIR:-./workspace}
+        target: /workspace
+        bind:
+          create_host_path: false
+      - agent-home:/home/agent
+    tmpfs:
+      - /tmp:mode=1777
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  agent-home:
