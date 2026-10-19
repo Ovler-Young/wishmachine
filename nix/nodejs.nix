@@ -14,6 +14,7 @@ pkgs.stdenv.mkDerivation {
     runHook preInstall
     mkdir -p "$out"
     cp -r bin include lib share "$out/"
+    PATH="$out/bin:$PATH" patchShebangs --build "$out/lib/node_modules"
     runHook postInstall
   '';
   passthru.python = pkgs.python3;
