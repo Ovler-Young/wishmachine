@@ -1,15 +1,20 @@
 { pkgs }:
 # Harness' native loader reads Node internals and requires the official binary layout.
+let
+  release = builtins.fromJSON (builtins.readFile ./nodejs.json);
+in
 pkgs.stdenv.mkDerivation {
   pname = "nodejs-official";
-  version = "24.16.0";
+  inherit (release) version;
   src = pkgs.fetchurl {
-    url = "https://nodejs.org/dist/v24.16.0/node-v24.16.0-linux-x64.tar.xz";
-    sha256 = "d804845d34eddc21dc1092b519d643ef40b1f58ec5dec5c22b1f4bd8fabde6c9";
+    url = "https://nodejs.org/dist/v${release.version}/node-v${release.version}-linux-x64.tar.xz";
+    inherit (release) sha256;
   };
   nativeBuildInputs = [ pkgs.autoPatchelfHook ];
   buildInputs = [ pkgs.stdenv.cc.cc.lib ];
   dontStrip = true;
+  # Preserve the official binary's ELF header order so Node can start after patching.
+  patchelfFlags = [ "--no-sort" ];
   installPhase = ''
     runHook preInstall
     mkdir -p "$out"

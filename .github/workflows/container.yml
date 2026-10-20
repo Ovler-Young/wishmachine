@@ -48,18 +48,29 @@ jobs:
           node-version: '24'
           package-manager-cache: false
 
-      - name: Select Harness version
+      - name: Install Nix
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      - name: Select and lock upstream releases
         id: version
         shell: bash
         run: |
           if [[ "$PUBLISH" == true ]]; then
             version=$(npm view @deepseek-ai/dsh dist-tags.latest)
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+            npm install --prefix nix --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact "@deepseek-ai/dsh@$version"
+            node nix/update-node.mjs
+            nix flake update nixpkgs
           else
             version=$(node -p 'require("./nix/package.json").dependencies["@deepseek-ai/dsh"]')
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          node_version=$(node -p 'require("./nix/nodejs.json").version')
+          nixpkgs_rev=$(node -p 'JSON.parse(require("node:fs").readFileSync("flake.lock", "utf8")).nodes.nixpkgs.locked.rev')
+          tag="dsh-$version-node-$node_version-nix-$nixpkgs_rev-git-$GITHUB_SHA"
+          [[ ${#tag} -le 128 ]]
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          printf 'tag=dsh-%s-git-%s\n' "$version" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
@@ -79,16 +90,6 @@ jobs:
             echo 'exists=true' >> "$GITHUB_OUTPUT"
             printf 'Already published %s:%s.\n' "$IMAGE" "$TAG" >> "$GITHUB_STEP_SUMMARY"
           fi
-
-      - name: Lock upstream release
-        if: env.PUBLISH == 'true' && steps.published.outputs.exists != 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: npm install --prefix nix --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact "@deepseek-ai/dsh@$VERSION"
-
-      - name: Install Nix
-        if: steps.published.outputs.exists != 'true'
-        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
       - name: Verify entrypoint and build image
         if: steps.published.outputs.exists != 'true'
@@ -111,6 +112,7 @@ jobs:
           name: inputs-${{ steps.version.outputs.tag }}
           path: |
             flake.lock
+            nix/nodejs.json
             nix/package.json
             nix/package-lock.json
           if-no-files-found: error
