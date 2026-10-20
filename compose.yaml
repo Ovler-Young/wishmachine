@@ -12,7 +12,9 @@ services:
           create_host_path: false
       - agent-home:/root
     tmpfs:
-      - /tmp:mode=1777
+      # Docker mounts tmpfs noexec by default; tools run by the agent need to
+      # execute build artifacts placed in /tmp.
+      - /tmp:mode=1777,exec
     restart: unless-stopped
     stop_grace_period: 30s
 

@@ -4,7 +4,8 @@ set -euo pipefail
 image=${1:?Usage: image-smoke.sh IMAGE}
 
 # Keep the real Harness process isolated; Tunnel requires a live credential.
-container=$(docker run --detach --network none --entrypoint /bin/dsh "$image" \
+container=$(docker run --detach --network none --entrypoint /bin/dsh \
+  --tmpfs /tmp:mode=1777 "$image" \
   web --host 127.0.0.1 --port 3080 --no-open)
 trap 'docker rm -f "$container" > /dev/null' EXIT
 

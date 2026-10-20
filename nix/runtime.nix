@@ -41,6 +41,10 @@ let
     "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
     "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
     "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-bundle.crt"
+    # The Harness native addon loader stages .node files under TMPDIR before
+    # dlopen(); Docker mounts tmpfs with noexec by default, so load the binary
+    # directly from the (always executable) Nix store instead.
+    "NARB_DISABLE_NATIVE_CACHE=1"
   ];
   sshConfig = pkgs.writeText "wishmachine-sshd-config" ''
     ListenAddress 127.0.0.1
