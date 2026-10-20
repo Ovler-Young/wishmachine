@@ -10,7 +10,7 @@ services:
         target: /workspace
         bind:
           create_host_path: false
-      - agent-home:/home/agent
+      - agent-home:/root
     tmpfs:
       - /tmp:mode=1777
     restart: unless-stopped

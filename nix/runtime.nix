@@ -30,12 +30,12 @@ let
     pathsToLink = [ "/bin" "/etc" "/share" ];
   };
   runtimeEnv = [
-    "PATH=/home/agent/.local/bin:/bin"
-    "HOME=/home/agent"
-    "DSH_HOME=/home/agent/.dsh"
-    "XDG_CACHE_HOME=/home/agent/.cache"
-    "XDG_CONFIG_HOME=/home/agent/.config"
-    "XDG_DATA_HOME=/home/agent/.local/share"
+    "PATH=/root/.local/bin:/bin"
+    "HOME=/root"
+    "DSH_HOME=/root/.dsh"
+    "XDG_CACHE_HOME=/root/.cache"
+    "XDG_CONFIG_HOME=/root/.config"
+    "XDG_DATA_HOME=/root/.local/share"
     "SHELL=/bin/bash"
     "LANG=C.UTF-8"
     "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
@@ -45,8 +45,8 @@ let
   sshConfig = pkgs.writeText "wishmachine-sshd-config" ''
     ListenAddress 127.0.0.1
     Port 2222
-    AllowUsers agent
-    PermitRootLogin no
+    AllowUsers root
+    PermitRootLogin prohibit-password
     PasswordAuthentication no
     KbdInteractiveAuthentication no
     PubkeyAuthentication yes
@@ -60,25 +60,23 @@ let
     tag = "dsh-${version}";
     contents = [ environment ];
     extraCommands = ''
-      mkdir -p home/agent workspace tmp usr/bin etc
+      mkdir -p root workspace tmp usr/bin etc var/empty
       ln -s ${sshConfig} etc/wishmachine-sshd_config
       chmod 1777 tmp
+      chmod 0755 var/empty
       ln -s ${pkgs.coreutils}/bin/env usr/bin/env
       cat > etc/passwd <<'PASSWD'
       root:x:0:0:root:/root:/bin/bash
-      agent:x:1000:1000:Agent:/home/agent:/bin/bash
+      sshd:x:74:74:Privilege-separated SSH:/var/empty:/sbin/nologin
       PASSWD
       cat > etc/group <<'GROUP'
       root:x:0:
-      agent:x:1000:
+      sshd:x:74:
       GROUP
       echo 'hosts: files dns' > etc/nsswitch.conf
     '';
-    fakeRootCommands = ''
-      chown 1000:1000 home/agent workspace
-    '';
     config = {
-      User = "1000:1000";
+      User = "0:0";
       WorkingDir = "/workspace";
       Entrypoint = [ "${pkgs.tini}/bin/tini" "-g" "--" "/bin/wishmachine-entrypoint" ];
       Env = runtimeEnv;
