@@ -25,14 +25,16 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write
 
 concurrency:
   group: container-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   IMAGE: ghcr.io/ovler-young/wishmachine
   PUBLISH: ${{ github.repository == 'Ovler-Young/wishmachine' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.event_name != 'pull_request' }}
+  REFRESH: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
 jobs:
   container:
@@ -55,7 +57,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [[ "$PUBLISH" == true ]]; then
+          if [[ "$REFRESH" == true ]]; then
             version=$(npm view @deepseek-ai/dsh dist-tags.latest)
             [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
             npm install --prefix nix --package-lock-only --ignore-scripts --no-audit --no-fund --save-exact "@deepseek-ai/dsh@$version"
@@ -71,6 +73,17 @@ jobs:
           [[ ${#tag} -le 128 ]]
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Nix store
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/*.nix', 'nix/nodejs.json', 'nix/package-lock.json', 'runtime/**') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 4G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-last-accessed: P7D
+          purge-primary-key: never
 
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
