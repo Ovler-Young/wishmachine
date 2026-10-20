@@ -29,12 +29,39 @@ let
     ];
     pathsToLink = [ "/bin" "/etc" "/share" ];
   };
+  runtimeEnv = [
+    "PATH=/home/agent/.local/bin:/bin"
+    "HOME=/home/agent"
+    "DSH_HOME=/home/agent/.dsh"
+    "XDG_CACHE_HOME=/home/agent/.cache"
+    "XDG_CONFIG_HOME=/home/agent/.config"
+    "XDG_DATA_HOME=/home/agent/.local/share"
+    "SHELL=/bin/bash"
+    "LANG=C.UTF-8"
+    "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+    "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+    "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-bundle.crt"
+  ];
+  sshConfig = pkgs.writeText "wishmachine-sshd-config" ''
+    ListenAddress 127.0.0.1
+    Port 2222
+    AllowUsers agent
+    PermitRootLogin no
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PubkeyAuthentication yes
+    UsePAM no
+    PidFile none
+    Subsystem sftp internal-sftp
+    SetEnv ${builtins.concatStringsSep " " runtimeEnv}
+  '';
   image = pkgs.dockerTools.buildLayeredImage {
     name = "ghcr.io/ovler-young/wishmachine";
     tag = "dsh-${version}";
     contents = [ environment ];
     extraCommands = ''
       mkdir -p home/agent workspace tmp usr/bin etc
+      ln -s ${sshConfig} etc/wishmachine-sshd_config
       chmod 1777 tmp
       ln -s ${pkgs.coreutils}/bin/env usr/bin/env
       cat > etc/passwd <<'PASSWD'
@@ -54,19 +81,7 @@ let
       User = "1000:1000";
       WorkingDir = "/workspace";
       Entrypoint = [ "${pkgs.tini}/bin/tini" "-g" "--" "/bin/wishmachine-entrypoint" ];
-      Env = [
-        "PATH=/home/agent/.local/bin:/bin"
-        "HOME=/home/agent"
-        "DSH_HOME=/home/agent/.dsh"
-        "XDG_CACHE_HOME=/home/agent/.cache"
-        "XDG_CONFIG_HOME=/home/agent/.config"
-        "XDG_DATA_HOME=/home/agent/.local/share"
-        "SHELL=/bin/bash"
-        "LANG=C.UTF-8"
-        "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
-        "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
-        "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-bundle.crt"
-      ];
+      Env = runtimeEnv;
       Labels = {
         "org.opencontainers.image.title" = "Wishmachine";
         "org.opencontainers.image.source" = "https://github.com/Ovler-Young/wishmachine";

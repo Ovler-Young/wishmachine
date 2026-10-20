@@ -36,6 +36,7 @@ while true; do sleep 0.05; done
       XDG_DATA_HOME: `${directory}/home/.local/share`,
       TEST_DIRECTORY: directory,
       TUNNEL_TOKEN: 'test-tunnel-credential',
+      WISHMACHINE_SSH_ENABLED: 'false',
       DSH_PUBLIC_URL: 'https://harness.example.com',
       ...overrides,
     },
@@ -68,7 +69,7 @@ test('missing tunnel token fails before starting either service', { timeout: 500
   assert.match(runtime.output(), /TUNNEL_TOKEN is required/);
 });
 
-test('launch config preserves auth and routes the token only to cloudflared, then stops both services', { timeout: 5000 }, async t => {
+test('SSH-disabled launch needs no key file, preserves auth and routes the token only to cloudflared', { timeout: 5000 }, async t => {
   const runtime = await start(t);
   const dshArgs = await waitForFile(join(runtime.directory, 'dsh.args'));
   await waitForFile(join(runtime.directory, 'cloudflared.args'));

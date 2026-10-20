@@ -1,0 +1,11 @@
+services:
+  harness:
+    environment:
+      WISHMACHINE_SSH_ENABLED: "true"
+    configs:
+      - source: ssh_authorized_keys
+        target: /run/configs/wishmachine_ssh_authorized_keys
+
+configs:
+  ssh_authorized_keys:
+    file: ${SSH_AUTHORIZED_KEYS_FILE:-./ssh_authorized_keys.pub}
